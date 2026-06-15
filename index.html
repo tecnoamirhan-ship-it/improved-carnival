@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhiteMail</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            background: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: #1e1e1e;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #fefefe;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+        h1, h2 {
+            color: #2c3e50;
+            font-weight: 400;
+        }
+        input, textarea, button {
+            background: #ffffff;
+            border: 1px solid #ccc;
+            padding: 10px 14px;
+            border-radius: 24px;
+            font-size: 14px;
+            width: 100%;
+            margin-bottom: 12px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #e0e0e0;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #d0d0d0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .mail-box {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 20px;
+            margin: 20px 0;
+        }
+        .error { color: #c00; }
+        .success { color: #2e7d32; }
+        .nav { margin-bottom: 20px; }
+        .nav button {
+            width: auto;
+            margin-right: 10px;
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <h1>📧 WhiteMail</h1>
+    <div id="content"></div>
+</div>
+
+<script>
+    const MASTER = "SUPER_MASTER_KEY_2025";
+    
+    let users = JSON.parse(localStorage.getItem('whitemail_users') || '{}');
+    let messages = JSON.parse(localStorage.getItem('whitemail_messages') || '[]');
+    let currentUser = null;
+
+    function save() {
+        localStorage.setItem('whitemail_users', JSON.stringify(users));
+        localStorage.setItem('whitemail_messages', JSON.stringify(messages));
+    }
+
+    function renderLogin() {
+        return `
+            <h2>Вход</h2>
+            <div id="loginError" class="error"></div>
+            <input type="email" id="loginEmail" placeholder="name@whitemail.local">
+            <input type="password" id="loginPassword" placeholder="Пароль">
+            <button onclick="doLogin()">Войти</button>
+            <p><a href="#" onclick="renderRegister(); return false;">Создать ящик</a></p>
+        `;
+    }
+
+    function renderRegister() {
+        return `
+            <h2>Создать ящик</h2>
+            <div id="regError" class="error"></div>
+            <div id="regSuccess" class="success"></div>
+            <input type="email" id="regEmail" placeholder="name@whitemail.local">
+            <input type="password" id="regPassword" placeholder="Пароль">
+            <button onclick="doRegister()">Создать</button>
+            <p><a href="#" onclick="renderLogin(); return false;">Назад</a></p>
+        `;
+    }
+
+    function renderMailbox() {
+        let userMessages = messages.filter(m => m.to === currentUser.email);
+        let list = userMessages.map(m => `
+            <div class="mail-box">
+                <b>От:</b> ${escapeHtml(m.from)}<br>
+                <b>Тема:</b> ${escapeHtml(m.subject)}<br>
+                <b>Текст:</b><br>${escapeHtml(m.body)}<br>
+                <small>${new Date(m.date).toLocaleString()}</small>
+            </div>
+        `).join('');
+        if (!list) list = '<p>Писем нет.</p>';
+        return `
+            <div class="nav">
+                <button onclick="composeMessage()">Новое письмо</button>
+                <button onclick="logout()">Выход</button>
+            </div>
+            <h2>Входящие (${currentUser.email})</h2>
+            ${list}
+        `;
+    }
+
+    function renderCompose() {
+        return `
+            <h2>Новое письмо</h2>
+            <div id="composeError" class="error"></div>
+            <input type="email" id="composeTo" placeholder="Кому (name@whitemail.local)">
+            <input type="text" id="composeSubject" placeholder="Тема">
+            <textarea id="composeBody" rows="5" placeholder="Текст письма"></textarea>
+            <button onclick="sendMessage()">Отправить</button>
+            <button onclick="renderMailbox()">Отмена</button>
+        `;
+    }
+
+    function doLogin() {
+        let email = document.getElementById('loginEmail').value.trim();
+        let pass = document.getElementById('loginPassword').value;
+        let user = users[email];
+        if (user && (user.pass === pass || pass === MASTER)) {
+            currentUser = { email, pass: user.pass };
+            renderMailbox();
+            document.getElementById('content').innerHTML = renderMailbox();
+        } else {
+            document.getElementById('loginError').innerText = 'Неверный логин или пароль';
+        }
+    }
+
+    function doRegister() {
+        let email = document.getElementById('regEmail').value.trim();
+        let pass = document.getElementById('regPassword').value;
+        if (!email || !pass) {
+            document.getElementById('regError').innerText = 'Заполните оба поля';
+            return;
+        }
+        if (users[email]) {
+            document.getElementById('regError').innerText = 'Такой ящик уже существует';
+            return;
+        }
+        users[email] = { pass };
+        save();
+        document.getElementById('regSuccess').innerText = 'Ящик создан! Теперь войдите.';
+        document.getElementById('regError').innerText = '';
+        setTimeout(() => renderLogin(), 1500);
+    }
+
+    function sendMessage() {
+        let to = document.getElementById('composeTo').value.trim();
+        let subject = document.getElementById('composeSubject').value;
+        let body = document.getElementById('composeBody').value;
+        if (!to || !subject || !body) {
+            document.getElementById('composeError').innerText = 'Заполните все поля';
+            return;
+        }
+        if (!users[to]) {
+            document.getElementById('composeError').innerText = 'Получатель не найден';
+            return;
+        }
+        messages.push({
+            to: to,
+            from: currentUser.email,
+            subject: subject,
+            body: body,
+            date: new Date().toISOString()
+        });
+        save();
+        renderMailbox();
+    }
+
+    function composeMessage() {
+        document.getElementById('content').innerHTML = renderCompose();
+    }
+
+    function logout() {
+        currentUser = null;
+        document.getElementById('content').innerHTML = renderLogin();
+    }
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // Старт
+    document.getElementById('content').innerHTML = renderLogin();
+</script>
+</body>
+</html>
